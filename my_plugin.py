@@ -27,6 +27,7 @@ from qgis.PyQt.QtWidgets import QAction, QComboBox
 from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes, QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
 from qgis.gui import QgsMapTool
 from PyQt5.QtCore import Qt
+import requests
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -59,6 +60,13 @@ class PointClickTool(QgsMapTool):
         self.plugin.dlg.longitude.setText(f"Longitude: {point_wgs84.x():.6f}")
         self.plugin.dlg.latitude.setText(f"Latitude: {point_wgs84.y():.6f}")
 
+        r = requests.get(f"https://data.geopf.fr/geocodage/reverse?lat={point_wgs84.y():.6f}&lon={point_wgs84.x():.6f}&limit=1&type=housenumber")
+        print(r.json())
+        data = r.json()
+        print(data['features'][0]['properties']['label'])
+        self.plugin.dlg.adresse.setText(f"adresse: {r.json()['features'][0]['properties']['name']} {r.json()['features'][0]['properties']['citycode']} {r.json()['features'][0]['properties']['city']}")
+        
+        
 
 
 class MyPlugin:

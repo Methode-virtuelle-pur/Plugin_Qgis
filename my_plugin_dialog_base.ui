@@ -104,6 +104,19 @@
     <string>Latitude :</string>
    </property>
   </widget>
+  <widget class="QLabel" name="adresse">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>190</y>
+     <width>321</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Adresse :</string>
+   </property>
+  </widget>
  </widget>
  <resources/>
  <connections>
