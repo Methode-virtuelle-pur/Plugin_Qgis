@@ -24,7 +24,9 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QComboBox
-from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
+from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes, QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
+from qgis.gui import QgsMapTool
+from PyQt5.QtCore import Qt
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -32,6 +34,30 @@ from .resources import *
 from .my_plugin_dialog import MyPluginDialog
 import os.path
 
+
+class PointClickTool(QgsMapTool):
+    def __init__(self, iface, plugin):
+        """Initialisation de l'outil de clic"""
+        super().__init__(iface.mapCanvas())
+        self.iface = iface
+        self.canvas = iface.mapCanvas()
+        self.plugin = plugin  # Référence à MyPlugin
+
+    def canvasReleaseEvent(self, event):
+        """Détecte le clic et affiche les coordonnées"""
+        # Récupérer les coordonnées du clic
+        point = self.canvas.getCoordinateTransform().toMapCoordinates(event.pos().x(), event.pos().y())
+
+        # Convertir en WGS84 (EPSG:4326) si nécessaire
+        crs_src = self.canvas.mapSettings().destinationCrs()  # Système de référence de la carte
+        crs_wgs84 = QgsCoordinateReferenceSystem("EPSG:4326")  # WGS84
+        transform = QgsCoordinateTransform(crs_src, crs_wgs84, QgsProject.instance())
+
+        point_wgs84 = transform.transform(point)
+
+        # Mettre à jour les labels dans MyPluginDialog
+        self.plugin.dlg.longitude.setText(f"Longitude: {point_wgs84.x():.6f}")
+        self.plugin.dlg.latitude.setText(f"Latitude: {point_wgs84.y():.6f}")
 
 
 
@@ -205,6 +231,11 @@ class MyPlugin:
         for layer in point_layers:
             self.dlg.ponctuelle.addItem(layer.name())
 
+
+
+        # Activer l'outil de clic personnalisé
+        self.click_tool = PointClickTool(self.iface, self)
+        self.iface.mapCanvas().setMapTool(self.click_tool)
 
         # show the dialog
         self.dlg.show()
