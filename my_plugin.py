@@ -23,13 +23,16 @@
 """
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction, QComboBox
+from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
 
 # Initialize Qt resources from file resources.py
 from .resources import *
 # Import the code for the dialog
 from .my_plugin_dialog import MyPluginDialog
 import os.path
+
+
 
 
 class MyPlugin:
@@ -188,6 +191,20 @@ class MyPlugin:
         if self.first_start == True:
             self.first_start = False
             self.dlg = MyPluginDialog()
+
+        # Récupérer toutes les couches du projet
+        layers = QgsProject.instance().mapLayers().values()
+
+        # Filtrer uniquement les couches de type "Point"
+        point_layers = [
+            layer for layer in layers
+            if isinstance(layer, QgsVectorLayer) and layer.wkbType() == QgsWkbTypes.Point
+        ]
+
+        # Ajouter les noms des couches au combo
+        for layer in point_layers:
+            self.dlg.ponctuelle.addItem(layer.name())
+
 
         # show the dialog
         self.dlg.show()
