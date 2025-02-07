@@ -37,6 +37,14 @@ from .my_plugin_dialog import MyPluginDialog
 import os.path
 
 
+from qgis.gui import QgsMapTool
+from qgis.core import (
+    QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject,
+    QgsVectorLayer, QgsFeatureRequest, QgsGeometry, Qgis
+)
+import requests  # Import pour le géocodage
+from PyQt5.QtCore import Qt
+
 class PointClickTool(QgsMapTool):
     def __init__(self, iface, plugin):
         """Initialisation de l'outil de clic"""
@@ -46,65 +54,76 @@ class PointClickTool(QgsMapTool):
         self.plugin = plugin  # Référence à MyPlugin
 
     def canvasReleaseEvent(self, event):
-        """Détecte le clic et affiche les coordonnées"""
-        # Récupérer les coordonnées du clic
-        point = self.canvas.getCoordinateTransform().toMapCoordinates(event.pos().x(), event.pos().y())
-
-        # Convertir en WGS84 (EPSG:4326) si nécessaire
-        crs_src = self.canvas.mapSettings().destinationCrs()  # Système de référence de la carte
-        crs_wgs84 = QgsCoordinateReferenceSystem("EPSG:4326")  # WGS84
-        transform = QgsCoordinateTransform(crs_src, crs_wgs84, QgsProject.instance())
-
-        point_wgs84 = transform.transform(point)
-
-        # Mettre à jour les labels dans MyPluginDialog
-        self.plugin.dlg.longitude.setText(f"Longitude: {point_wgs84.x():.6f}")
-        self.plugin.dlg.latitude.setText(f"Latitude: {point_wgs84.y():.6f}")
-
-        # Requète de l'API de reverse géocodage au point cliqué, filtré sur les maison limité a 1 pour avoir la plus proche.
-        r = requests.get(f"https://data.geopf.fr/geocodage/reverse?lat={point_wgs84.y():.6f}&lon={point_wgs84.x():.6f}&limit=1&type=housenumber")
-        
-        # Mettre à jour le label adresse : 
-        self.plugin.dlg.adresse.setText(f"adresse: {r.json()['features'][0]['properties']['name']} {r.json()['features'][0]['properties']['citycode']} {r.json()['features'][0]['properties']['city']}")
-
-         # Récupérer la distance entrée par l'utilisateur
-        distance = self.plugin.dlg.distance.text()
+        """Détecte le clic et effectue l'analyse des objets autour"""
         try:
-            buffer_distance = float(distance)
-        except ValueError:
-            self.iface.messageBar().pushMessage("Erreur : Distance invalide", level=Qgis.Critical, duration = 5)
-            return
+            # Récupérer les coordonnées du clic
+            point = self.canvas.getCoordinateTransform().toMapCoordinates(event.pos().x(), event.pos().y())
 
-        # Récupérer la couche sélectionnée
-        nom_couche = self.plugin.dlg.ponctuelle.currentText()
-        layer = None
-        for couche in QgsProject.instance().mapLayers().values():
-            if couche.name() == nom_couche:
-                layer = couche
-                break
+            # Convertir en WGS84 (EPSG:4326)
+            crs_src = self.canvas.mapSettings().destinationCrs()
+            crs_wgs84 = QgsCoordinateReferenceSystem("EPSG:4326")
+            transform_to_wgs84 = QgsCoordinateTransform(crs_src, crs_wgs84, QgsProject.instance())
+            point_wgs84 = transform_to_wgs84.transform(point)
 
-        if not layer:
-            self.iface.messageBar().pushMessage("Erreur : Aucune couche sélectionnée", level=Qgis.Critical, duration = 5)
-            return
+            # Mettre à jour les labels avec les coordonnées
+            self.plugin.dlg.longitude.setText(f"Longitude: {point_wgs84.x():.6f}")
+            self.plugin.dlg.latitude.setText(f"Latitude: {point_wgs84.y():.6f}")
 
-        # Transformer le point dans le CRS de la couche
-        crs_layer = layer.crs()
-        transform_to_layer = QgsCoordinateTransform(crs_src, crs_layer, QgsProject.instance())
-        point_layer_crs = transform_to_layer.transform(point)
+            # Récupérer la distance entrée par l'utilisateur
+            distance_text = self.plugin.dlg.distance.text()
+            try:
+                buffer_distance = float(distance_text)
+                if buffer_distance <= 0:
+                    raise ValueError("La distance doit être positive.")
+            except ValueError:
+                self.iface.messageBar().pushMessage("Erreur", "Distance invalide. Veuillez entrer un nombre positif.", level=Qgis.Critical, duration=5)
+                return
 
-        # Créer un buffer autour du point
-        point_geom = QgsGeometry.fromPointXY(QgsPointXY(point_layer_crs))
-        buffer_geom = point_geom.buffer(buffer_distance, 20)  # 20 segments pour une forme lisse (explication au tableau)
+            # Récupérer la couche sélectionnée
+            selected_layer_name = self.plugin.dlg.ponctuelle.currentText()
+            layer = None
+            for lyr in QgsProject.instance().mapLayers().values():
+                if lyr.name() == selected_layer_name:
+                    layer = lyr
+                    break
 
-        # Vérifier les objets intersectant le buffer
-        request = QgsFeatureRequest().setFilterRect(buffer_geom.boundingBox())
-        count = 0
-        for feature in layer.getFeatures(request):
-            if feature.geometry().intersects(buffer_geom):
-                count += 1
+            if not layer:
+                self.iface.messageBar().pushMessage("Erreur", "Aucune couche sélectionnée.", level=Qgis.Critical, duration=5)
+                return
 
-        # Mettre à jour le label avec le nombre d'objets trouvés
-        self.plugin.dlg.objet.setText(f"Il y a : {count}")
+            # Vérifier si le CRS de la couche est en mètres
+            crs_layer = layer.crs()
+            if crs_layer.isGeographic():
+                # Transformer le point vers un CRS projeté en mètres (EPSG:3857 par défaut)
+                crs_meters = QgsCoordinateReferenceSystem("EPSG:3857")
+                transform_to_meters = QgsCoordinateTransform(crs_src, crs_meters, QgsProject.instance())
+                point_layer_crs = transform_to_meters.transform(point)
+            else:
+                # Si la couche est déjà en mètres, pas besoin de conversion
+                transform_to_layer = QgsCoordinateTransform(crs_src, crs_layer, QgsProject.instance())
+                point_layer_crs = transform_to_layer.transform(point)
+
+            # Créer un buffer correctement projeté en mètres
+            point_geom = QgsGeometry.fromPointXY(QgsPointXY(point_layer_crs))
+            buffer_geom = point_geom.buffer(buffer_distance, 50)  # 50 segments pour un buffer plus précis
+
+            # Transformer le buffer dans le CRS de la couche d'analyse
+            transform_buffer_to_layer = QgsCoordinateTransform(QgsCoordinateReferenceSystem("EPSG:3857"), crs_layer, QgsProject.instance())
+            buffer_geom.transform(transform_buffer_to_layer)
+
+            # Vérifier les objets intersectant le buffer
+            request = QgsFeatureRequest().setFilterRect(buffer_geom.boundingBox())
+            count = 0
+            for feature in layer.getFeatures(request):
+                if feature.geometry().intersects(buffer_geom):
+                    count += 1
+
+            # Mettre à jour le label avec le nombre d'objets trouvés
+            self.plugin.dlg.objet.setText(f"Il y a : {count}")
+
+        except Exception as e:
+            self.iface.messageBar().pushMessage("Erreur", f"Une erreur est survenue : {str(e)}", level=Qgis.Critical, duration=5)
+
         
         
 
