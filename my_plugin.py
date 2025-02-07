@@ -21,12 +21,25 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
-from qgis.PyQt.QtGui import QIcon
+# Imports PyQt (Interface utilisateur)
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, QVariant
+from qgis.PyQt.QtGui import QIcon, QColor
 from qgis.PyQt.QtWidgets import QAction, QComboBox
-from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes, QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeatureRequest, QgsGeometry, QgsMessageLog, Qgis
+
+# Imports QGIS (Géométrie, Cartographie, Analyse)
+from qgis.core import (
+    QgsProject, QgsVectorLayer, QgsWkbTypes, QgsPointXY, QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform, QgsFeatureRequest, QgsGeometry, QgsMessageLog, Qgis,
+    QgsFeature, QgsField, QgsFillSymbol, QgsSymbol, QgsSingleSymbolRenderer
+)
+
+# Imports GUI QGIS (Outils interactifs)
 from qgis.gui import QgsMapTool, QgsMessageBar
+
+# Import PyQt (Correction de la virgule en trop)
 from PyQt5.QtCore import Qt
+
+# Import de la gestion des requêtes HTTP (ex: géocodage)
 import requests
 
 
@@ -37,13 +50,8 @@ from .my_plugin_dialog import MyPluginDialog
 import os.path
 
 
-from qgis.gui import QgsMapTool
-from qgis.core import (
-    QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject,
-    QgsVectorLayer, QgsFeatureRequest, QgsGeometry, Qgis
-)
-import requests  # Import pour le géocodage
-from PyQt5.QtCore import Qt
+
+
 
 class PointClickTool(QgsMapTool):
     def __init__(self, iface, plugin):
@@ -52,6 +60,34 @@ class PointClickTool(QgsMapTool):
         self.iface = iface
         self.canvas = iface.mapCanvas()
         self.plugin = plugin  # Référence à MyPlugin
+        self.buffer_layer = None  # Stocke la couche temporaire
+
+
+    def create_or_clear_buffer_layer(self):
+        """Crée une couche temporaire pour le buffer si elle n'existe pas encore, sinon la vide"""
+        if self.buffer_layer is None:
+            # Créer une couche temporaire vectorielle de type polygone
+            self.buffer_layer = QgsVectorLayer("Polygon?crs=EPSG:3857", "Buffer Temporaire", "memory")
+            self.buffer_layer.dataProvider().addAttributes([QgsField("id", QVariant.Int)])
+            self.buffer_layer.updateFields()
+
+            # Ajouter un style : contour noir, remplissage transparent
+            symbol = QgsFillSymbol.createSimple({
+                'color': 'transparent',  # Remplissage transparent
+                'outline_color': '#000000',  # Contour noir
+                'outline_width': '1'  # Ligne fine
+            })
+
+            self.buffer_layer.renderer().setSymbol(symbol)
+
+            # Ajouter la couche à la carte
+            QgsProject.instance().addMapLayer(self.buffer_layer)
+
+        # Supprimer les anciennes géométries
+        self.buffer_layer.startEditing()
+        self.buffer_layer.dataProvider().truncate()  # Efface tout
+        self.buffer_layer.commitChanges()
+
 
     def canvasReleaseEvent(self, event):
         """Détecte le clic et effectue l'analyse des objets autour"""
@@ -79,6 +115,25 @@ class PointClickTool(QgsMapTool):
                 self.iface.messageBar().pushMessage("Erreur", "Distance invalide. Veuillez entrer un nombre positif.", level=Qgis.Critical, duration=5)
                 return
 
+            # Transformer le point vers un CRS projeté en mètres (EPSG:3857)
+            crs_meters = QgsCoordinateReferenceSystem("EPSG:3857")
+            transform_to_meters = QgsCoordinateTransform(crs_src, crs_meters, QgsProject.instance())
+            point_meters = transform_to_meters.transform(point)
+
+            # Créer un buffer correctement projeté en mètres
+            point_geom = QgsGeometry.fromPointXY(QgsPointXY(point_meters))
+            buffer_geom = point_geom.buffer(buffer_distance, 50)  # 50 segments pour un buffer lisse
+
+            # Ajouter le buffer à la couche temporaire
+            self.create_or_clear_buffer_layer()  # Assurer que la couche est prête
+
+            self.buffer_layer.startEditing()
+            feature = QgsFeature()
+            feature.setGeometry(buffer_geom)
+            feature.setAttributes([1])  # Ajoute un ID unique
+            self.buffer_layer.addFeature(feature)
+            self.buffer_layer.commitChanges()
+
             # Récupérer la couche sélectionnée
             selected_layer_name = self.plugin.dlg.ponctuelle.currentText()
             layer = None
@@ -94,22 +149,9 @@ class PointClickTool(QgsMapTool):
             # Vérifier si le CRS de la couche est en mètres
             crs_layer = layer.crs()
             if crs_layer.isGeographic():
-                # Transformer le point vers un CRS projeté en mètres (EPSG:3857 par défaut)
-                crs_meters = QgsCoordinateReferenceSystem("EPSG:3857")
-                transform_to_meters = QgsCoordinateTransform(crs_src, crs_meters, QgsProject.instance())
-                point_layer_crs = transform_to_meters.transform(point)
-            else:
-                # Si la couche est déjà en mètres, pas besoin de conversion
-                transform_to_layer = QgsCoordinateTransform(crs_src, crs_layer, QgsProject.instance())
-                point_layer_crs = transform_to_layer.transform(point)
-
-            # Créer un buffer correctement projeté en mètres
-            point_geom = QgsGeometry.fromPointXY(QgsPointXY(point_layer_crs))
-            buffer_geom = point_geom.buffer(buffer_distance, 50)  # 50 segments pour un buffer plus précis
-
-            # Transformer le buffer dans le CRS de la couche d'analyse
-            transform_buffer_to_layer = QgsCoordinateTransform(QgsCoordinateReferenceSystem("EPSG:3857"), crs_layer, QgsProject.instance())
-            buffer_geom.transform(transform_buffer_to_layer)
+                # Transformer le buffer vers le CRS de la couche sélectionnée
+                transform_to_layer = QgsCoordinateTransform(crs_meters, crs_layer, QgsProject.instance())
+                buffer_geom.transform(transform_to_layer)
 
             # Vérifier les objets intersectant le buffer
             request = QgsFeatureRequest().setFilterRect(buffer_geom.boundingBox())
@@ -120,6 +162,9 @@ class PointClickTool(QgsMapTool):
 
             # Mettre à jour le label avec le nombre d'objets trouvés
             self.plugin.dlg.objet.setText(f"Il y a : {count}")
+
+            # Rafraîchir la carte pour voir la mise à jour
+            self.canvas.refresh()
 
         except Exception as e:
             self.iface.messageBar().pushMessage("Erreur", f"Une erreur est survenue : {str(e)}", level=Qgis.Critical, duration=5)
