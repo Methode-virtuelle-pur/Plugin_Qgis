@@ -1,32 +1,56 @@
-Plugin Builder Results
+Bonjour bienvenue sur le Github de mon plugin QGIS trop cool :
 
-Your plugin MyPlugin was created in:
-    .\my_plugin
+🗺️ Présentation du Plugin QGIS : Analyse Spatiale avec Buffer 🚀
+Ce plugin QGIS est un outil interactif permettant d'analyser et de visualiser des entités géographiques situées autour d'un point défini par l'utilisateur. Grâce à une interface intuitive, il offre des fonctionnalités avancées pour :
 
-Your QGIS plugin directory is located at:
-    C:/Users/Formation/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins
+Générer dynamiquement un buffer (zone tampon) autour d'un point cliqué sur la carte.
+Compter les entités (points) présentes dans la zone tampon.
+Affichage dynamique du buffer dans une couche temporaire.
+Gestion automatique des projections pour garantir la précision des distances.
+Interface utilisateur ergonomique avec sélection de couches et affichage des résultats.
+🛠️ Fonctionnalités principales
+📍 1. Sélection d’un point sur la carte
+🔹 L’utilisateur clique sur la carte pour sélectionner un emplacement précis.
+🔹 Le plugin récupère automatiquement les coordonnées en WGS84 et les affiche dans l’interface.
 
-What's Next:
+🎯 2. Création dynamique d’un buffer (zone tampon)
+🔹 L’utilisateur peut entrer une distance en mètres dans une zone de saisie.
+🔹 Un buffer est généré autour du point sélectionné, prenant en compte la projection de la carte.
+🔹 Le buffer est mis à jour dynamiquement à chaque clic, remplaçant l’ancien pour une meilleure lisibilité.
 
-  * Copy the entire directory containing your new plugin to the QGIS plugin
-    directory
+📊 3. Analyse des entités dans la zone tampon
+🔹 L’utilisateur sélectionne une couche de points depuis un menu déroulant.
+🔹 Le plugin compte automatiquement le nombre d’objets (points) présents dans la zone tampon.
+🔹 Le résultat est affiché dans un label de l’interface.
 
-  * Compile the resources file using pyrcc5
+🌍 4. Gestion des projections et affichage du buffer
+🔹 Conversion automatique des projections :
 
-  * Run the tests (``make test``)
+Si la carte est en WGS84 (EPSG:4326), la distance est convertie en mètres.
+Le buffer est toujours généré dans un système de projection métrique (EPSG:3857).
+🔹 Affichage du buffer sur la carte :
+Contour noir fin
+Remplissage transparent
+Un seul buffer visible à la fois (le précédent est effacé)
+⚠️ 5. Gestion des erreurs et interface intuitive
+🔹 Affichage des erreurs dans la QGIS Message Bar en cas de :
 
-  * Test the plugin by enabling it in the QGIS plugin manager
+Distance invalide
+Aucune couche sélectionnée
+Erreur lors du calcul 🔹 Interface simple et fluide, permettant une utilisation rapide et efficace.
+🔎 Cas d'utilisation
+✔ Analyse de densité de points : Identifier les objets proches d'un lieu précis.
+✔ Évaluation d'impact : Déterminer les éléments affectés dans une certaine zone.
+✔ Études spatiales : Visualiser la répartition des entités autour d'un point.
 
-  * Customize it by editing the implementation file: ``my_plugin.py``
+🖥️ Interface Utilisateur
+🖼 L’interface du plugin contient :
 
-  * Create your own custom icon, replacing the default icon.png
-
-  * Modify your user interface by opening MyPlugin_dialog_base.ui in Qt Designer
-
-  * You can use the Makefile to compile your Ui and resource files when
-    you make changes. This requires GNU make (gmake)
-
-For more information, see the PyQGIS Developer Cookbook at:
-http://www.qgis.org/pyqgis-cookbook/index.html
-
-(C) 2011-2018 GeoApt LLC - geoapt.com
+📍 Un bouton pour cliquer sur la carte et récupérer un point
+📏 Une zone de saisie pour entrer la distance du buffer (mètres)
+🗂️ Une liste déroulante pour sélectionner une couche de points
+📊 Un affichage du nombre d’objets trouvés dans le buffer
+🌍 Un affichage des coordonnées du point sélectionné
+⚠️ Un message d'erreur en cas de problème
+🚀 Conclusion
+Ce plugin QGIS est un outil puissant et intuitif pour réaliser des analyses spatiales autour d’un point donné. Il allie simplicité, efficacité et performance pour permettre aux utilisateurs d'effectuer des analyses en quelques clics seulement ! 🎉

@@ -52,7 +52,7 @@ import os.path
 
 
 
-
+# Création d'une classe qui gère les point cliqué sur la carte
 class PointClickTool(QgsMapTool):
     def __init__(self, iface, plugin):
         """Initialisation de l'outil de clic"""
@@ -122,7 +122,7 @@ class PointClickTool(QgsMapTool):
 
             # Créer un buffer correctement projeté en mètres
             point_geom = QgsGeometry.fromPointXY(QgsPointXY(point_meters))
-            buffer_geom = point_geom.buffer(buffer_distance, 50)  # 50 segments pour un buffer lisse
+            buffer_geom = point_geom.buffer(buffer_distance, 50)  # 50 segments pour un buffer lisse (explication vue au tableau)
 
             # Ajouter le buffer à la couche temporaire
             self.create_or_clear_buffer_layer()  # Assurer que la couche est prête
@@ -130,7 +130,7 @@ class PointClickTool(QgsMapTool):
             self.buffer_layer.startEditing()
             feature = QgsFeature()
             feature.setGeometry(buffer_geom)
-            feature.setAttributes([1])  # Ajoute un ID unique
+            feature.setAttributes([1])  # Ajoute un ID unique (indispensable pour que la couche fonctionne)
             self.buffer_layer.addFeature(feature)
             self.buffer_layer.commitChanges()
 
@@ -158,7 +158,7 @@ class PointClickTool(QgsMapTool):
             count = 0
             for feature in layer.getFeatures(request):
                 if feature.geometry().intersects(buffer_geom):
-                    count += 1
+                    count += 1                                      #décompte du nombre de ponctuelle
 
             # Mettre à jour le label avec le nombre d'objets trouvés
             self.plugin.dlg.objet.setText(f"Il y a : {count}")
@@ -167,7 +167,7 @@ class PointClickTool(QgsMapTool):
             self.canvas.refresh()
 
         except Exception as e:
-            self.iface.messageBar().pushMessage("Erreur", f"Une erreur est survenue : {str(e)}", level=Qgis.Critical, duration=5)
+            self.iface.messageBar().pushMessage("Erreur", f"Une erreur est survenue : {str(e)}", level=Qgis.Critical, duration=5)  #Erreur critique mais ne plante pas le plugin
 
         
         
