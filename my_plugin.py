@@ -24,10 +24,11 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QComboBox
-from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes, QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
-from qgis.gui import QgsMapTool
+from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes, QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeatureRequest, QgsGeometry, QgsMessageLog, Qgis
+from qgis.gui import QgsMapTool, QgsMessageBar
 from PyQt5.QtCore import Qt
 import requests
+
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -60,11 +61,50 @@ class PointClickTool(QgsMapTool):
         self.plugin.dlg.longitude.setText(f"Longitude: {point_wgs84.x():.6f}")
         self.plugin.dlg.latitude.setText(f"Latitude: {point_wgs84.y():.6f}")
 
+        # Requète de l'API de reverse géocodage au point cliqué, filtré sur les maison limité a 1 pour avoir la plus proche.
         r = requests.get(f"https://data.geopf.fr/geocodage/reverse?lat={point_wgs84.y():.6f}&lon={point_wgs84.x():.6f}&limit=1&type=housenumber")
-        print(r.json())
-        data = r.json()
-        print(data['features'][0]['properties']['label'])
+        
+        # Mettre à jour le label adresse : 
         self.plugin.dlg.adresse.setText(f"adresse: {r.json()['features'][0]['properties']['name']} {r.json()['features'][0]['properties']['citycode']} {r.json()['features'][0]['properties']['city']}")
+
+         # Récupérer la distance entrée par l'utilisateur
+        distance = self.plugin.dlg.distance.text()
+        try:
+            buffer_distance = float(distance)
+        except ValueError:
+            self.iface.messageBar().pushMessage("Erreur : Distance invalide", level=Qgis.Critical, duration = 5)
+            return
+
+        # Récupérer la couche sélectionnée
+        nom_couche = self.plugin.dlg.ponctuelle.currentText()
+        layer = None
+        for couche in QgsProject.instance().mapLayers().values():
+            if couche.name() == nom_couche:
+                layer = couche
+                break
+
+        if not layer:
+            self.iface.messageBar().pushMessage("Erreur : Aucune couche sélectionnée", level=Qgis.Critical, duration = 5)
+            return
+
+        # Transformer le point dans le CRS de la couche
+        crs_layer = layer.crs()
+        transform_to_layer = QgsCoordinateTransform(crs_src, crs_layer, QgsProject.instance())
+        point_layer_crs = transform_to_layer.transform(point)
+
+        # Créer un buffer autour du point
+        point_geom = QgsGeometry.fromPointXY(QgsPointXY(point_layer_crs))
+        buffer_geom = point_geom.buffer(buffer_distance, 20)  # 20 segments pour une forme lisse (explication au tableau)
+
+        # Vérifier les objets intersectant le buffer
+        request = QgsFeatureRequest().setFilterRect(buffer_geom.boundingBox())
+        count = 0
+        for feature in layer.getFeatures(request):
+            if feature.geometry().intersects(buffer_geom):
+                count += 1
+
+        # Mettre à jour le label avec le nombre d'objets trouvés
+        self.plugin.dlg.objet.setText(f"Il y a : {count}")
         
         
 
@@ -254,3 +294,4 @@ class MyPlugin:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
             pass
+
